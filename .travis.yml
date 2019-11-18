@@ -4,7 +4,7 @@ python:
 
 env:
   global:
-    - DOCKER_IMAGE=araffin/stable-baselines-cpu:v2.7.1
+    - DOCKER_IMAGE=araffin/stable-baselines-cpu:v2.9.0
 
 notifications:
   email: false
@@ -43,7 +43,7 @@ jobs:
 
     - name: "Type Checking"
       script:
-        - 'docker run --rm --mount src=$(pwd),target=/root/code/stable-baselines,type=bind ${DOCKER_IMAGE} bash -c "cd /root/code/stable-baselines/ && pip install pytype && pytype"'
+        - 'docker run --rm --mount src=$(pwd),target=/root/code/stable-baselines,type=bind ${DOCKER_IMAGE} bash -c "cd /root/code/stable-baselines/ && pytype"'
 
     - stage: Codacy Trigger
       if: type != pull_request
