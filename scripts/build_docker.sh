@@ -8,9 +8,9 @@ VERSION=v2.9.0
 
 if [[ ${USE_GPU} == "True" ]]; then
   PARENT=${GPU_PARENT}
-  TAG="${TAG}-gpu"
 else
   PARENT=${CPU_PARENT}
+  TAG="${TAG}-cpu"
 fi
 
 docker build --build-arg PARENT_IMAGE=${PARENT} -t ${TAG}:${VERSION} .
