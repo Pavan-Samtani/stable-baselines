@@ -455,7 +455,7 @@ def profile(name):
 class Logger(object):
     # A logger with no output files. (See right below class definition)
     #  So that you can still log to the terminal without setting up any output files
-    DEFAULT  = None  # type: Optional["Logger"]
+    DEFAULT = None  # type: Optional["Logger"]
     # Current logger being used by the free functions above
     CURRENT = None  # type: Optional["Logger"]
 
