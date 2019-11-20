@@ -6,6 +6,7 @@ RUN apt-get -y update \
     && apt-get -y install \
     curl \
     cmake \
+    default-jre \
     git \
     jq \
     python-dev \
@@ -46,7 +47,6 @@ ENV PATH=$VENV/bin:$PATH
 
 # Codacy code coverage report: used for partial code coverage reporting
 RUN cd $CODE_DIR && \
-    curl -Ls -o codacy-coverage-reporter "$(curl -Ls https://api.github.com/repos/codacy/codacy-coverage-reporter/releases/latest | jq -r '.assets | map({name, browser_download_url} | select(.name | contains("codacy-coverage-reporter-linux"))) | .[0].browser_download_url')" &&\
-    chmod +x codacy-coverage-reporter
+    curl -Ls -o codacy-coverage-reporter.jar "$(curl -Ls https://api.github.com/repos/codacy/codacy-coverage-reporter/releases/latest | jq -r '.assets | map({name, browser_download_url} | select(.name | (contains("codacy-coverage-reporter") and endswith("assembly.jar")))) | .[0].browser_download_url')"
 
 CMD /bin/bash

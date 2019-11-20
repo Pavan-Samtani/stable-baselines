@@ -31,5 +31,5 @@ else
   ${DOCKER_CMD} --env CODACY_PROJECT_TOKEN=${CODACY_PROJECT_TOKEN} ${DOCKER_IMAGE} \
       bash -c "${BASH_CMD} && \
                 pytest --cov-config .coveragerc --cov-report term --cov-report xml --cov=. -v tests/test_${TEST_GLOB} && \
-                /root/code/codacy-coverage-reporter report -l python -r coverage.xml --partial"
+                java -jar /root/code/codacy-coverage-reporter.jar report -l python -r coverage.xml --partial"
 fi
