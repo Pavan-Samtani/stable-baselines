@@ -466,30 +466,30 @@ class Runner(AbstractEnvRunner):
         ep_infos = []
         num_players = self.env.num_players
         for _ in range(self.n_steps):
-        	if isinstance(self.states, list):
-        		self.states = [self.states for _ in range(num_players)]
-        	all_actions = []
-        	for i in range(num_players):
-        		actions, values, self.states[i], neglogpacs = self.model.step(self.obs[i], self.states[i], self.dones)
-	            mb_obs.append(self.obs[i].copy())
-	            mb_actions.append(actions)
-	            mb_values.append(values)
-	            mb_neglogpacs.append(neglogpacs)
-	            mb_dones.append(self.dones)
-	            all_actions.append(np.squeeze(actions))
-	        actions = all_actions
+            if isinstance(self.states, list):
+                self.states = [self.states for _ in range(num_players)]
+            all_actions = []
+            for i in range(num_players):
+                actions, values, self.states[i], neglogpacs = self.model.step(self.obs[i], self.states[i], self.dones)
+                mb_obs.append(self.obs[i].copy())
+                mb_actions.append(actions)
+                mb_values.append(values)
+                mb_neglogpacs.append(neglogpacs)
+                mb_dones.append(self.dones)
+                all_actions.append(np.squeeze(actions))
+            actions = all_actions
             clipped_actions = actions
             # Clip the actions to avoid out of bound error
             if isinstance(self.env.action_space, gym.spaces.Box):
-            	for i in range(num_players):
-            		clipped_actions[i] = np.clip(actions[i], self.env.action_space.low, self.env.action_space.high)
+                for i in range(num_players):
+                    clipped_actions[i] = np.clip(actions[i], self.env.action_space.low, self.env.action_space.high)
             self.obs[:], rewards, self.dones, infos = self.env.step(clipped_actions)
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
             for x in rewards:
-            	mb_rewards.append(x)
+                mb_rewards.append(x)
         # batch of steps to batch of rollouts
         mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
@@ -502,18 +502,18 @@ class Runner(AbstractEnvRunner):
         mb_advs = np.zeros_like(mb_rewards)
         true_reward = np.copy(mb_rewards)
         last_gae_lam = [0 for _ in range(num_players)]
- 		nextvalues = [0 for _ in range(num_players)]
+        nextvalues = [0 for _ in range(num_players)]
         for step in reversed(range(self.n_steps)):
-        	for player in range(num_players):
-        		idx = step * num_players + player
-	            if step == self.n_steps - 1:
-	                nextnonterminal = 1.0 - self.dones
-	                nextvalues[player] = last_values[idx]
-	            else:
-	                nextnonterminal = 1.0 - mb_dones[idx + num_players]
-	                nextvalues[player] = mb_values[idx + num_players]
-	            delta = mb_rewards[idx] + self.gamma * nextvalues[player] * nextnonterminal - mb_values[idx]
-	            mb_advs[idx] = last_gae_lam[player] = delta + self.gamma * self.lam * nextnonterminal * last_gae_lam[player]
+            for player in range(num_players):
+                idx = step * num_players + player
+                if step == self.n_steps - 1:
+                    nextnonterminal = 1.0 - self.dones
+                    nextvalues[player] = last_values[idx]
+                else:
+                    nextnonterminal = 1.0 - mb_dones[idx + num_players]
+                    nextvalues[player] = mb_values[idx + num_players]
+                delta = mb_rewards[idx] + self.gamma * nextvalues[player] * nextnonterminal - mb_values[idx]
+                mb_advs[idx] = last_gae_lam[player] = delta + self.gamma * self.lam * nextnonterminal * last_gae_lam[player]
         mb_returns = mb_advs + mb_values
 
         mb_obs, mb_returns, mb_dones, mb_actions, mb_values, mb_neglogpacs, true_reward = \
