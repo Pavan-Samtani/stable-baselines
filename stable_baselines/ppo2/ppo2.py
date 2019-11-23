@@ -115,7 +115,7 @@ class PPO2(ActorCriticRLModel):
             assert issubclass(self.policy, ActorCriticPolicy), "Error: the input policy for the PPO2 model must be " \
                                                                "an instance of common.policies.ActorCriticPolicy."
 
-            self.n_batch = self.n_envs * self.n_steps
+            self.n_batch = self.n_envs * self.n_steps * self.env.num_players
 
             self.graph = tf.Graph()
             with self.graph.as_default():
@@ -127,7 +127,7 @@ class PPO2(ActorCriticRLModel):
                 if issubclass(self.policy, RecurrentActorCriticPolicy):
                     assert self.n_envs % self.nminibatches == 0, "For recurrent policies, "\
                         "the number of environments run in parallel should be a multiple of nminibatches."
-                    n_batch_step = self.n_envs
+                    n_batch_step = self.n_envs * self.env.num_players
                     n_batch_train = self.n_batch // self.nminibatches
 
                 act_model = self.policy(self.sess, self.observation_space, self.action_space, self.n_envs, 1,
