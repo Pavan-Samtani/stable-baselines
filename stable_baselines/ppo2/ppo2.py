@@ -99,6 +99,7 @@ class PPO2(ActorCriticRLModel):
         self.n_batch = None
         self.summary = None
         self.episode_reward = None
+        self.num_players = env.get_attr("num_players")[0]
 
         if _init_setup_model:
             self.setup_model()
@@ -115,7 +116,7 @@ class PPO2(ActorCriticRLModel):
             assert issubclass(self.policy, ActorCriticPolicy), "Error: the input policy for the PPO2 model must be " \
                                                                "an instance of common.policies.ActorCriticPolicy."
 
-            self.n_batch = self.n_envs * self.n_steps * self.env.num_players
+            self.n_batch = self.n_envs * self.n_steps * self.num_players
 
             self.graph = tf.Graph()
             with self.graph.as_default():
@@ -127,7 +128,7 @@ class PPO2(ActorCriticRLModel):
                 if issubclass(self.policy, RecurrentActorCriticPolicy):
                     assert self.n_envs % self.nminibatches == 0, "For recurrent policies, "\
                         "the number of environments run in parallel should be a multiple of nminibatches."
-                    n_batch_step = self.n_envs * self.env.num_players
+                    n_batch_step = self.n_envs * self.num_players
                     n_batch_train = self.n_batch // self.nminibatches
 
                 act_model = self.policy(self.sess, self.observation_space, self.action_space, self.n_envs, 1,
@@ -336,7 +337,7 @@ class PPO2(ActorCriticRLModel):
                 self.num_timesteps += self.n_batch
                 ep_info_buf.extend(ep_infos)
                 mb_loss_vals = []
-                if states is None:  # nonrecurrent version
+                if states is None or (isinstance(states, list) and all(v is None for v in states)):  # nonrecurrent v
                     update_fac = self.n_batch // self.nminibatches // self.noptepochs + 1
                     inds = np.arange(self.n_batch)
                     for epoch_num in range(self.noptepochs):
@@ -357,7 +358,7 @@ class PPO2(ActorCriticRLModel):
                     envs_per_batch = batch_size // self.n_steps
                     for epoch_num in range(self.noptepochs):
                         np.random.shuffle(env_indices)
-                        for start in range(0, self.n_envs, envs_per_batch):
+                        for start in range(0, self.n_envs * self.num_players, envs_per_batch):
                             timestep = self.num_timesteps // update_fac + ((self.noptepochs * self.n_envs + epoch_num *
                                                                             self.n_envs + start) // envs_per_batch)
                             end = start + envs_per_batch
@@ -464,9 +465,9 @@ class Runner(AbstractEnvRunner):
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [], [], [], [], [], []
         mb_states = self.states
         ep_infos = []
-        num_players = self.env.num_players
+        num_players = self.env.get_attr("num_players")[0]
         for _ in range(self.n_steps):
-            if isinstance(self.states, list):
+            if not isinstance(self.states, list):
                 self.states = [self.states for _ in range(num_players)]
             all_actions = []
             for i in range(num_players):
@@ -483,16 +484,19 @@ class Runner(AbstractEnvRunner):
             if isinstance(self.env.action_space, gym.spaces.Box):
                 for i in range(num_players):
                     clipped_actions[i] = np.clip(actions[i], self.env.action_space.low, self.env.action_space.high)
-            self.obs[:], rewards, self.dones, infos = self.env.step(clipped_actions)
+            self.obs, rewards, self.dones, infos = self.env.step(clipped_actions)
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
-            for x in rewards:
-                mb_rewards.append(x)
+            rewards = np.ravel(rewards)
+            for i in range(num_players):
+                mb_rewards.append(rewards[i])
         # batch of steps to batch of rollouts
-        mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
+        mb_obs = np.asarray(mb_obs, dtype=self.obs[0].dtype)
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
+        if len(mb_rewards.shape) < 2:
+            mb_rewards = mb_rewards[:, np.newaxis]
         mb_actions = np.asarray(mb_actions)
         mb_values = np.asarray(mb_values, dtype=np.float32)
         mb_neglogpacs = np.asarray(mb_neglogpacs, dtype=np.float32)
@@ -508,7 +512,7 @@ class Runner(AbstractEnvRunner):
                 idx = step * num_players + player
                 if step == self.n_steps - 1:
                     nextnonterminal = 1.0 - self.dones
-                    nextvalues[player] = last_values[idx]
+                    nextvalues[player] = last_values[player]
                 else:
                     nextnonterminal = 1.0 - mb_dones[idx + num_players]
                     nextvalues[player] = mb_values[idx + num_players]

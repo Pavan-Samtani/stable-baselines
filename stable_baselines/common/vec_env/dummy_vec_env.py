@@ -21,12 +21,12 @@ class DummyVecEnv(VecEnv):
         VecEnv.__init__(self, len(env_fns), env.observation_space, env.action_space)
         obs_space = env.observation_space
         self.keys, shapes, dtypes = obs_space_info(obs_space)
-
+        self.num_players = self.get_attr("num_players")[0]
         self.buf_obs = OrderedDict([
-            (k, np.zeros((self.num_envs,) + tuple(shapes[k]), dtype=dtypes[k]))
+            (k, np.zeros((self.num_envs, self.num_players,) + tuple(shapes[k]), dtype=dtypes[k]))
             for k in self.keys])
         self.buf_dones = np.zeros((self.num_envs,), dtype=np.bool)
-        self.buf_rews = np.zeros((self.num_envs,), dtype=np.float32)
+        self.buf_rews = np.zeros((self.num_envs, self.num_players), dtype=np.float32)
         self.buf_infos = [{} for _ in range(self.num_envs)]
         self.actions = None
         self.metadata = env.metadata
@@ -42,14 +42,16 @@ class DummyVecEnv(VecEnv):
                 # save final observation where user can get it, then reset
                 self.buf_infos[env_idx]['terminal_observation'] = obs
                 obs = self.envs[env_idx].reset()
-            self._save_obs(env_idx, obs)
+            for i in range(self.num_players):
+                self._save_obs(env_idx, i, obs[i])
         return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones),
                 self.buf_infos.copy())
 
     def reset(self):
         for env_idx in range(self.num_envs):
             obs = self.envs[env_idx].reset()
-            self._save_obs(env_idx, obs)
+            for i in range(self.num_players):
+                self._save_obs(env_idx, i, obs[i])
         return self._obs_from_buf()
 
     def close(self):
@@ -65,15 +67,18 @@ class DummyVecEnv(VecEnv):
         else:
             return super().render(*args, **kwargs)
 
-    def _save_obs(self, env_idx, obs):
+    def _save_obs(self, env_idx, player_idx, obs):
         for key in self.keys:
             if key is None:
-                self.buf_obs[key][env_idx] = obs
+                self.buf_obs[key][env_idx, player_idx] = obs
             else:
-                self.buf_obs[key][env_idx] = obs[key]
+                self.buf_obs[key][env_idx, player_idx] = obs[key]
 
     def _obs_from_buf(self):
-        return dict_to_obs(self.observation_space, copy_obs_dict(self.buf_obs))
+        return [np.squeeze(x, axis=1) for x in np.split(dict_to_obs(self.observation_space, 
+                                                                    copy_obs_dict(self.buf_obs)), 
+                                                	     self.num_players, 
+                                                         axis=1)]
 
     def get_attr(self, attr_name, indices=None):
         """Return attribute from vectorized environment (see base class)."""
