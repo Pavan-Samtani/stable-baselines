@@ -364,7 +364,7 @@ class PPO2(ActorCriticRLModel):
                             all_indices = np.arange(obs.shape[0])
                             for player in range(self.num_players):
                                 states_ = states[player]
-                                player_indices = np.where(all_indices % player == 0)
+                                player_indices = np.where((all_indices + 1) % (player + 1) == 0)
                                 obs_ = obs[player_indices]
                                 returns_ = returns[player_indices]
                                 masks_ = masks[player_indices]
