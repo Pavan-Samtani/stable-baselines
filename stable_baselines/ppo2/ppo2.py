@@ -128,8 +128,8 @@ class PPO2(ActorCriticRLModel):
                 if issubclass(self.policy, RecurrentActorCriticPolicy):
                     assert self.n_envs % self.nminibatches == 0, "For recurrent policies, "\
                         "the number of environments run in parallel should be a multiple of nminibatches."
-                    n_batch_step = self.n_envs * self.num_players
-                    n_batch_train = self.n_batch // self.nminibatches
+                    n_batch_step = self.n_envs
+                    n_batch_train = self.n_batch // (self.nminibatches * self.num_players)
 
                 act_model = self.policy(self.sess, self.observation_space, self.action_space, self.n_envs, 1,
                                         n_batch_step, reuse=False, **self.policy_kwargs)
@@ -355,20 +355,30 @@ class PPO2(ActorCriticRLModel):
                     assert self.n_envs % self.nminibatches == 0
                     env_indices = np.arange(self.n_envs)
                     flat_indices = np.arange(self.n_envs * self.n_steps).reshape(self.n_envs, self.n_steps)
-                    envs_per_batch = batch_size // self.n_steps
+                    envs_per_batch = batch_size // (self.n_steps * self.num_players)
                     for epoch_num in range(self.noptepochs):
                         np.random.shuffle(env_indices)
-                        for start in range(0, self.n_envs * self.num_players, envs_per_batch):
+                        for start in range(0, self.n_envs, envs_per_batch):
                             timestep = self.num_timesteps // update_fac + ((self.noptepochs * self.n_envs + epoch_num *
                                                                             self.n_envs + start) // envs_per_batch)
-                            end = start + envs_per_batch
-                            mb_env_inds = env_indices[start:end]
-                            mb_flat_inds = flat_indices[mb_env_inds].ravel()
-                            slices = (arr[mb_flat_inds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-                            mb_states = states[mb_env_inds]
-                            mb_loss_vals.append(self._train_step(lr_now, cliprange_now, *slices, update=timestep,
-                                                                 writer=writer, states=mb_states,
-                                                                 cliprange_vf=cliprange_vf_now))
+                            all_indices = np.arange(obs.shape[0])
+                            for player in range(self.num_players):
+                                states_ = states[player]
+                                player_indices = np.where(all_indices % player == 0)
+                                obs_ = obs[player_indices]
+                                returns_ = returns[player_indices]
+                                masks_ = masks[player_indices]
+                                actions_ = actions[player_indices]
+                                values_ = values[player_indices]
+                                neglogpacs_ = neglogpacs[player_indices]
+                                end = start + envs_per_batch
+                                mb_env_inds = env_indices[start:end]
+                                mb_flat_inds = flat_indices[mb_env_inds].ravel()
+                                slices = (arr[mb_flat_inds] for arr in (obs_, returns_, masks_, actions_, values_, neglogpacs_))
+                                mb_states = states_[mb_env_inds]
+                                mb_loss_vals.append(self._train_step(lr_now, cliprange_now, *slices, update=timestep,
+                                                                     writer=writer, states=mb_states,
+                                                                     cliprange_vf=cliprange_vf_now))
 
                 loss_vals = np.mean(mb_loss_vals, axis=0)
                 t_now = time.time()
@@ -463,12 +473,12 @@ class Runner(AbstractEnvRunner):
         """
         # mb stands for minibatch
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [], [], [], [], [], []
+        num_players = self.env.get_attr("num_players")[0]
+        if not isinstance(self.states, list):
+            self.states = [self.states for _ in range(num_players)]
         mb_states = self.states
         ep_infos = []
-        num_players = self.env.get_attr("num_players")[0]
         for _ in range(self.n_steps):
-            if not isinstance(self.states, list):
-                self.states = [self.states for _ in range(num_players)]
             all_actions = []
             for i in range(num_players):
                 actions, values, self.states[i], neglogpacs = self.model.step(self.obs[i], self.states[i], self.dones)
@@ -489,14 +499,11 @@ class Runner(AbstractEnvRunner):
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
-            rewards = np.ravel(rewards)
             for i in range(num_players):
-                mb_rewards.append(rewards[i])
+                mb_rewards.append(rewards[:, i])
         # batch of steps to batch of rollouts
         mb_obs = np.asarray(mb_obs, dtype=self.obs[0].dtype)
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
-        if len(mb_rewards.shape) < 2:
-            mb_rewards = mb_rewards[:, np.newaxis]
         mb_actions = np.asarray(mb_actions)
         mb_values = np.asarray(mb_values, dtype=np.float32)
         mb_neglogpacs = np.asarray(mb_neglogpacs, dtype=np.float32)
