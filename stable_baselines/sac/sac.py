@@ -132,6 +132,7 @@ class SAC(OffPolicyRLModel):
         self.processed_obs_ph = None
         self.processed_next_obs_ph = None
         self.log_ent_coef = None
+        self.num_players = self.env.get_attr("num_players")[0]
 
         if _init_setup_model:
             self.setup_model()
@@ -405,25 +406,31 @@ class SAC(OffPolicyRLModel):
                 # from a uniform distribution for better exploration.
                 # Afterwards, use the learned policy
                 # if random_exploration is set to 0 (normal setting)
-                if (self.num_timesteps < self.learning_starts
-                    or np.random.rand() < self.random_exploration):
-                    # No need to rescale when sampling random action
-                    rescaled_action = action = self.env.action_space.sample()
-                else:
-                    action = self.policy_tf.step(obs[None], deterministic=False).flatten()
-                    # Add noise to the action (improve exploration,
-                    # not needed in general)
-                    if self.action_noise is not None:
-                        action = np.clip(action + self.action_noise(), -1, 1)
-                    # Rescale from [-1, 1] to the correct bounds
-                    rescaled_action = action * np.abs(self.action_space.low)
+                actions = []
+                rescaled_actions = []
+                for player_idx in range(self.num_players):
+                    if (self.num_timesteps < self.learning_starts
+                        or np.random.rand() < self.random_exploration):
+                        # No need to rescale when sampling random action
+                        rescaled_action = action = self.env.action_space.sample()
+                    else:
+                        action = self.policy_tf.step(obs[player_idx][None], deterministic=False).flatten()
+                        # Add noise to the action (improve exploration,
+                        # not needed in general)
+                        if self.action_noise is not None:
+                            action = np.clip(action + self.action_noise(), -1, 1)
+                        # Rescale from [-1, 1] to the correct bounds
+                        rescaled_action = action * np.abs(self.action_space.low)
 
-                assert action.shape == self.env.action_space.shape
+                    assert action.shape == self.env.action_space.shape
+                    actions.append(action)
+                    rescaled_actions.append(rescaled_action)
 
-                new_obs, reward, done, info = self.env.step(rescaled_action)
+                new_obs, reward, done, info = self.env.step(rescaled_actions)
 
                 # Store transition in the replay buffer.
-                self.replay_buffer.add(obs, action, reward, new_obs, float(done))
+                for idx in range(self.num_players):
+                    self.replay_buffer.add(obs[idx], action[idx], reward[idx], new_obs[idx], float(done))
                 obs = new_obs
 
                 # Retrieve reward and episode length if using Monitor wrapper
@@ -461,7 +468,7 @@ class SAC(OffPolicyRLModel):
                     if len(mb_infos_vals) > 0:
                         infos_values = np.mean(mb_infos_vals, axis=0)
 
-                episode_rewards[-1] += reward
+                episode_rewards[-1] += np.max(reward)
                 if done:
                     if self.action_noise is not None:
                         self.action_noise.reset()
