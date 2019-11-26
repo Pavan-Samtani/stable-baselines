@@ -132,7 +132,7 @@ class SAC(OffPolicyRLModel):
         self.processed_obs_ph = None
         self.processed_next_obs_ph = None
         self.log_ent_coef = None
-        self.num_players = self.env.get_attr("num_players")[0]
+        self.num_players = self.env.num_players
 
         if _init_setup_model:
             self.setup_model()
@@ -430,7 +430,7 @@ class SAC(OffPolicyRLModel):
 
                 # Store transition in the replay buffer.
                 for idx in range(self.num_players):
-                    self.replay_buffer.add(obs[idx], action[idx], reward[idx], new_obs[idx], float(done))
+                    self.replay_buffer.add(obs[idx], actions[idx], reward[idx], new_obs[idx], float(done))
                 obs = new_obs
 
                 # Retrieve reward and episode length if using Monitor wrapper
