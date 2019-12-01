@@ -438,9 +438,9 @@ class SAC(OffPolicyRLModel):
                 if maybe_ep_info is not None:
                     ep_info_buf.extend([maybe_ep_info])
 
-                if writer is not None:
+                if writer is not None and done:
                     # Write reward per episode to tensorboard
-                    ep_reward = np.array([reward]).reshape((1, -1))
+                    ep_reward = np.array([np.max(reward)]).reshape((1, -1))
                     ep_done = np.array([done]).reshape((1, -1))
                     self.episode_reward = total_episode_reward_logger(self.episode_reward, ep_reward,
                                                                       ep_done, writer, self.num_timesteps)
@@ -468,7 +468,7 @@ class SAC(OffPolicyRLModel):
                     if len(mb_infos_vals) > 0:
                         infos_values = np.mean(mb_infos_vals, axis=0)
 
-                episode_rewards[-1] += np.max(reward)
+                episode_rewards[-1] = np.max(reward)
                 if done:
                     if self.action_noise is not None:
                         self.action_noise.reset()
